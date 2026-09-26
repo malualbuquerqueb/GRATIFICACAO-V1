@@ -1,0 +1,149 @@
+:root {
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-border: #e0e3e8;
+  --color-border-strong: #c7ccd4;
+  --color-text: #1f2933;
+  --color-text-muted: #667085;
+  --color-accent: #2a5f8f;
+  --color-accent-dark: #1e4a70;
+  --color-accent-bg: #eaf1f7;
+  --color-success: #1e7a4c;
+  --color-success-bg: #e6f4ec;
+  --color-warning: #a1650c;
+  --color-warning-bg: #fbeed9;
+  --color-danger: #b3261e;
+  --color-danger-bg: #fbe7e5;
+  --color-neutral: #4b5563;
+  --color-neutral-bg: #edeef1;
+  --color-info: #3f5b8c;
+  --color-info-bg: #e9edf6;
+  --sidebar-width: 236px;
+  --header-height: 60px;
+  --radius: 4px;
+  font-family: 'Segoe UI', Roboto, Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  min-width: 1180px;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--sidebar-width);
+}
+
+.page-content {
+  padding: 24px 28px 40px;
+  flex: 1;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-header-titles h1 {
+  font-size: 20px;
+}
+
+.page-header-titles .breadcrumb {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.page-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-title .hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.helper-text {
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
