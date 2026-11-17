@@ -32,6 +32,7 @@ export interface DadosCadastro {
 
 /** 'api' = dados do backend; 'mock' = backend desligado, usando o mockData nesta sessão. */
 export type FonteCadastro = 'carregando' | 'api' | 'mock';
+export type EstadoAuditoria = | 'carregando' | 'sucesso' | 'sem_permissao' | 'erro';
 
 export type ResultadoCadastro = { ok: true } | { ok: false; erros: ErrosCampos };
 
@@ -50,6 +51,7 @@ interface AppContextValue {
   competencias: typeof COMPETENCIAS;
   registros: RegistroIndicador[];
   auditoria: AuditoriaEntrada[];
+  estadoAuditoria: EstadoAuditoria;
   entrar: () => void;
   sair: () => void;
   definirPerfil: (perfil: PerfilId) => void;
@@ -88,11 +90,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [perfilAtual, setPerfilAtual] = useState<PerfilId>('gestor');
   const [competenciaId, setCompetenciaId] = useState(COMPETENCIA_ATUAL_ID);
   const [registros, setRegistros] = useState<RegistroIndicador[]>(REGISTROS_INICIAIS);
-  const [auditoria, setAuditoria] = useState<AuditoriaEntrada[]>(AUDITORIA_INICIAL);
+  const [, setAuditoria] = useState<AuditoriaEntrada[]>(AUDITORIA_INICIAL);
   const [competencias, setCompetencias] = useState(COMPETENCIAS);
   const [cadastro, setCadastro] = useState<DadosCadastro>(CADASTRO_MOCK);
   const [fonteCadastro, setFonteCadastro] = useState<FonteCadastro>('carregando');
   const [auditoriaApi, setAuditoriaApi] = useState<AuditoriaEntrada[]>([]);
+  const [estadoAuditoria, setEstadoAuditoria] = useState<EstadoAuditoria>('carregando');
 
   const usuarioAtual = nomeUsuarioPorPerfil(perfilAtual, cadastro.usuarios);
 
@@ -108,20 +111,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // (gestor: a unidade; coordenador: o distrito; SEAB/Configurador: o município).
   useEffect(() => {
     let ativo = true;
-    Promise.all([api.listarDistritos(), api.listarUnidades(), api.listarUsuarios(), api.listarAuditoria()])
-      .then(([distritos, unidades, usuarios, aud]) => {
+    console.log('[Cadastro] Fonte atual:', fonteCadastro);
+
+    Promise.all([api.listarDistritos(), api.listarUnidades(), api.listarUsuarios()])
+      .then(([distritos, unidades, usuarios]) => {
         if (!ativo) return;
         setCadastro({ distritos, unidades, usuarios });
-        setAuditoriaApi(aud);
         setFonteCadastro('api');
       })
-      .catch(() => {
+      .catch((erro) => {
+        console.error('[Cadastro] Erro ao carregar:', erro);
+        
         if (ativo) setFonteCadastro('mock');
       });
+      
+    console.log('[Cadastro] Fonte atual:', fonteCadastro);
     return () => {
       ativo = false;
     };
   }, [perfilAtual]);
+
+  //permite que a Auditoria seja carregada separadamente do Cadastro
+  useEffect(() => {
+  let ativo = true;
+
+  setEstadoAuditoria('carregando');
+  setAuditoriaApi([]);
+
+  api.listarAuditoria()
+    .then((dados) => {
+      if (!ativo) return;
+
+      setAuditoriaApi(dados);
+      setEstadoAuditoria('sucesso');
+    })
+    .catch((erro: unknown) => {
+      if (!ativo) return;
+
+      setAuditoriaApi([]);
+
+      if (
+        erro instanceof ErroApi &&
+        (erro.status === 401 || erro.status === 403)
+      ) {
+        setEstadoAuditoria('sem_permissao');
+      } else {
+        setEstadoAuditoria('erro');
+      }
+    });
+
+  return () => {
+    ativo = false;
+  };
+}, [perfilAtual]);
 
   const nomePerfilAtual = PERFIS.find((p) => p.id === perfilAtual)?.nome ?? '';
 
@@ -134,9 +176,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return lista.some((x) => x.id === item.id) ? lista.map((x) => (x.id === item.id ? item : x)) : [...lista, item];
   }
 
-  function atualizarAuditoriaApi() {
-    api.listarAuditoria().then(setAuditoriaApi).catch(() => undefined);
-  }
+  function atualizarAuditoriaApi() {//<--refinar posteriormente para evitar respostas desatualizadas quando o usuário trocar de perfil durante uma operação
+  api.listarAuditoria()
+    .then((dados) => {
+      setAuditoriaApi(dados);
+      setEstadoAuditoria('sucesso');
+    })
+    .catch((erro: unknown) => {
+      setAuditoriaApi([]);
+
+      if (
+        erro instanceof ErroApi &&
+        (erro.status === 401 || erro.status === 403)
+      ) {
+        setEstadoAuditoria('sem_permissao');
+      } else {
+        setEstadoAuditoria('erro');
+      }
+    });
+}
 
   function localizacaoUnidade(unidadeId?: string) {
     const unidade = cadastro.unidades.find((u) => u.id === unidadeId);
@@ -321,7 +379,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     competencias,
     registros,
     // Registros do backend (cadastro) primeiro, depois os desta sessão (indicadores etc.).
-    auditoria: [...auditoriaApi, ...auditoria],
+    auditoria: auditoriaApi,estadoAuditoria, // <--tela exibirá exclusivamente os registros retornados pelo backend  | [...auditoriaApi, ...auditoria],
     cadastro,
     fonteCadastro,
     salvarUnidade,

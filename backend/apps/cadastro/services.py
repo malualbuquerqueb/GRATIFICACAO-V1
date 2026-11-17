@@ -70,12 +70,40 @@ def _localizacao(obj) -> str:
             return obj.distrito.nome
     return "Município"
 
+def _escopo_auditoria(obj) -> tuple[str | None, str | None]:
+    """
+    Identifica os vínculos territoriais do objeto auditado.
+
+    Retorna:
+        (unidade_id, distrito_id)
+    """
+
+    if isinstance(obj, Unidade):
+        return obj.pk, obj.distrito_id
+
+    if isinstance(obj, Avaliado):
+        unidade_id = obj.unidade_id
+
+        distrito_id = obj.distrito_id
+
+        if unidade_id and not distrito_id:
+            distrito_id = obj.unidade.distrito_id
+
+        return unidade_id, distrito_id
+
+    if isinstance(obj, Distrito):
+        return None, obj.pk
+
+    return None, None
+
 
 def _auditar(obj, autor: Autor, antes: dict | None):
     nome_classe = {Unidade: "Unidade", Avaliado: "Avaliado", Distrito: "Distrito"}[type(obj)]
     registro = f"{nome_classe} {obj.pk} · {obj}"
     depois = _foto(obj)
-    comum = dict(componente=COMPONENTE, usuario=autor.nome, perfil=_perfil_label(autor.perfil))
+    unidade_id, distrito_id = _escopo_auditoria(obj)
+    comum = dict(componente=COMPONENTE, usuario=autor.nome, perfil=_perfil_label(autor.perfil),unidade_id=unidade_id,
+    distrito_id=distrito_id,)
 
     if antes is None:
         registrar(

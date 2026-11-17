@@ -51,8 +51,10 @@ PERMISSOES_ESPERADAS = {
         "publicar_resultado",
         "julgar_recurso",
         "enviar_resultado_folha",
+        "consultar_auditoria"
     },
-    "Avaliado": {"consultar_propria_pontuacao", "apresentar_recurso"},
+    "Avaliado": {"consultar_propria_pontuacao", "apresentar_recurso", "consultar_auditoria"},
+
 }
 
 

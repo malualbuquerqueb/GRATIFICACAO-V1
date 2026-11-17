@@ -46,4 +46,6 @@ class Operacao(models.Model):
             # Avaliado
             ("consultar_propria_pontuacao", "Consultar a própria pontuação (UC07, publicacao)"),
             ("apresentar_recurso", "Apresentar recurso (UC08, recurso)"),
+            # Auditoria
+            ("consultar_auditoria", "Consultar registros de auditoria"),
         ]

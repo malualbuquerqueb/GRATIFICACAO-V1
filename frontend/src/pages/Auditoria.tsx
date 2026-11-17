@@ -2,11 +2,32 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 
 export function Auditoria() {
-  const { auditoria } = useApp();
+  const { auditoria, estadoAuditoria } = useApp();
   const [operacaoFiltro, setOperacaoFiltro] = useState('todas');
 
   const operacoes = Array.from(new Set(auditoria.map((a) => a.operacao)));
   const listaFiltrada = auditoria.filter((a) => operacaoFiltro === 'todas' || a.operacao === operacaoFiltro);
+
+  if (estadoAuditoria === 'carregando') {
+  return <div className="section">Carregando registros de auditoria...</div>;
+}
+
+if (estadoAuditoria === 'sem_permissao') {
+  return (
+    <div className="section" role="alert">
+      Você não possui permissão para consultar os registros de auditoria.
+    </div>
+  );
+}
+
+if (estadoAuditoria === 'erro') {
+  return (
+    <div className="section" role="alert">
+      Não foi possível carregar os registros de auditoria.
+      Verifique a conexão com o servidor.
+    </div>
+  );
+}
 
   return (
     <div>

@@ -1,6 +1,7 @@
 from django.utils import timezone
 from rest_framework import mixins, serializers, viewsets
-
+from apps.acesso.interface import ExigePermissao
+from apps.cadastro.interface import escopo_do_request
 from .models import RegistroAuditoria
 
 
@@ -44,9 +45,23 @@ class RegistroAuditoriaViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """GET /api/auditoria/?componente=cadastro"""
 
     serializer_class = RegistroAuditoriaSerializer
+    permission_classes = [ExigePermissao]
+    permissoes_exigidas = ("acesso.consultar_auditoria",)
 
     def get_queryset(self):
         qs = RegistroAuditoria.objects.all()
+        escopo = escopo_do_request(self.request)
+        if escopo.vazio:
+            return qs.none()
+
+        if not escopo.municipal:
+            if escopo.unidade_id:
+                qs = qs.filter(unidade_id=escopo.unidade_id)
+            elif escopo.distrito_id:
+                qs = qs.filter(distrito_id=escopo.distrito_id)
+            else:
+                return qs.none()
+
         if componente := self.request.query_params.get("componente"):
             qs = qs.filter(componente=componente)
         return qs[:500]

@@ -11,6 +11,8 @@ def registrar(
     valor_anterior: str = "—",
     novo_valor: str = "—",
     localizacao: str = "",
+    unidade_id: str | None = None,
+    distrito_id: str | None = None,
 ) -> RegistroAuditoria:
     return RegistroAuditoria.objects.create(
         componente=componente,
@@ -21,4 +23,6 @@ def registrar(
         valor_anterior=valor_anterior,
         novo_valor=novo_valor,
         localizacao=localizacao,
+        unidade_id=unidade_id,
+        distrito_id=distrito_id,
     )

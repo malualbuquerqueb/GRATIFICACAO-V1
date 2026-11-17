@@ -9,8 +9,12 @@ from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase, override_settings
 from rest_framework.test import APITestCase
+from apps.cadastro.interface import escopo_do_request
+from rest_framework.test import APIRequestFactory
+from apps.auditoria.interface import registros, registrar
 
-from apps.auditoria.interface import registros
+
+from apps.cadastro.models import Avaliado, PerfilId, Status, Distrito, Unidade, TipoUnidade
 
 from . import models, services
 from .interface import escopo_do_request
@@ -87,6 +91,8 @@ class ModeloTest(TestCase):
         self.assertIn("unidade: USF B", reg.novo_valor)
         self.assertEqual(reg.componente, "cadastro")
         self.assertEqual(reg.perfil, "SEAB/CAM — Monitoramento")
+        self.assertEqual(reg.unidade_id, "u2")
+        self.assertEqual(reg.distrito_id, "d2")
 
     def test_salvar_sem_mudanca_nao_gera_registro(self):
         antes = registros().count()
@@ -174,6 +180,10 @@ class ApiTest(APITestCase):
         self.configurador = _usuario("patricia", "Configurador", "Patrícia", "Gomes Freitas")
         self.cam = _usuario("cam", "CAM/SECOGE")
         self.avaliado = _usuario("ana", "Avaliado")
+        # Vincula o usuário CAM à pessoa SEAB existente.
+        pessoa_cam = Avaliado.objects.get(pk="us7")
+        pessoa_cam.usuario = self.cam
+        pessoa_cam.save(update_fields=["usuario"])
 
     def test_formato_igual_ao_front(self):
         self.client.force_authenticate(self.configurador)  # vê o município (ver EscopoTest)
@@ -253,8 +263,13 @@ class ApiTest(APITestCase):
 
     def test_auditoria_no_formato_do_front(self):
         self.client.force_authenticate(self.configurador)
-        self.client.patch("/api/usuarios/us2/", {"unidadeId": "u3"}, format="json")
+        r = self.client.patch("/api/usuarios/us2/", {"unidadeId": "u3"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+
+        self.client.force_authenticate(self.cam)
         r = self.client.get("/api/auditoria/", {"componente": "cadastro"})
+        self.assertEqual(r.status_code, 200, r.data)
+
         primeiro = r.data[0]
         self.assertEqual(primeiro["operacao"], "Vínculo alterado")
         self.assertEqual(
@@ -382,3 +397,232 @@ class EscopoTest(APITestCase):
 
     def test_vinculos_sem_escopo_continua_completo_para_a_apuracao(self):
         self.assertEqual(len(services.vinculos_unidade_pessoa()), 6)  # 4 gestores + 2 coordenadores ativos
+
+
+class AuditoriaEscopoTest(APITestCase):
+
+    def test_gestor_ve_apenas_a_propria_unidade(self):
+        # 1. Criar dois distritos.
+        d1 = Distrito.objects.create(id="d1", nome="Distrito 1")
+        d2 = Distrito.objects.create(id="d2", nome="Distrito 2")
+
+        # 2. Criar três unidades.
+        u1 = Unidade.objects.create(
+            id="u1", nome="Unidade 1",
+            distrito=d1, tipo=TipoUnidade.USF
+        )
+        u2 = Unidade.objects.create(
+            id="u2", nome="Unidade 2",
+            distrito=d1, tipo=TipoUnidade.USF
+        )
+        u3 = Unidade.objects.create(
+            id="u3", nome="Unidade 3",
+            distrito=d2, tipo=TipoUnidade.USF
+        )
+
+        # 3. Criar usuário com permissão de Avaliado.
+        Usuario = get_user_model()
+        gestor = Usuario.objects.create_user(
+            username="gestor_teste",
+            password="senha_teste_123"
+        )
+        gestor.groups.add(Group.objects.get(name="Avaliado"))
+
+        # 4. Vincular o usuário ao perfil Gestor da unidade u1.
+        Avaliado.objects.create(
+            id="us1",
+            nome="Gestor de Teste",
+            email="gestor.teste@example.com",
+            perfil=PerfilId.GESTOR,
+            unidade=u1,
+            distrito=d1,
+            usuario=gestor
+        )
+
+        # 5. Criar três registros em localidades diferentes.
+        for unidade, distrito in [(u1, d1), (u2, d1), (u3, d2)]:
+            registrar(
+                componente="cadastro",
+                usuario="Sistema de Teste",
+                perfil="Teste",
+                operacao="Alteração de teste",
+                registro_afetado=unidade.nome,
+                unidade_id=unidade.id,
+                distrito_id=distrito.id
+            )
+
+        # 6. Consultar a Auditoria como Gestor.
+        self.client.force_authenticate(user=gestor)
+        resposta = self.client.get("/api/auditoria/")
+
+        self.assertEqual(resposta.status_code, 200, resposta.data)
+
+        # 7. Deve visualizar somente o registro da unidade u1.
+        self.assertEqual(len(resposta.data), 1)
+        self.assertEqual(
+            resposta.data[0]["registroAfetado"],
+            "Unidade 1"
+        )
+
+    def test_coordenador_ve_apenas_o_proprio_distrito(self):
+        # 1. Criar dois distritos.
+        d1 = Distrito.objects.create(id="d1", nome="Distrito 1")
+        d2 = Distrito.objects.create(id="d2", nome="Distrito 2")
+
+        # 2. Criar três unidades.
+        u1 = Unidade.objects.create(
+            id="u1",
+            nome="Unidade 1",
+            distrito=d1,
+            tipo=TipoUnidade.USF
+        )
+
+        u2 = Unidade.objects.create(
+            id="u2",
+            nome="Unidade 2",
+            distrito=d1,
+            tipo=TipoUnidade.USF
+        )
+
+        u3 = Unidade.objects.create(
+            id="u3",
+            nome="Unidade 3",
+            distrito=d2,
+            tipo=TipoUnidade.USF
+        )
+
+        # 3. Criar usuário com permissão de Avaliado.
+        Usuario = get_user_model()
+
+        coordenador = Usuario.objects.create_user(
+            username="coordenador_teste",
+            password="senha_teste_123"
+        )
+
+        coordenador.groups.add(
+            Group.objects.get(name="Avaliado")
+        )
+
+        # 4. Vincular o usuário ao distrito d1.
+        Avaliado.objects.create(
+            id="us2",
+            nome="Coordenador de Teste",
+            email="coordenador.teste@example.com",
+            perfil=PerfilId.COORDENADOR,
+            distrito=d1,
+            usuario=coordenador
+        )
+
+        # 5. Criar registros de auditoria em distritos diferentes.
+        for unidade, distrito in [(u1, d1), (u2, d1), (u3, d2)]:
+            registrar(
+                componente="cadastro",
+                usuario="Sistema de Teste",
+                perfil="Teste",
+                operacao="Alteração de teste",
+                registro_afetado=unidade.nome,
+                unidade_id=unidade.id,
+                distrito_id=distrito.id
+            )
+
+        # 6. Consultar a Auditoria como Coordenador.
+        self.client.force_authenticate(user=coordenador)
+
+        resposta = self.client.get("/api/auditoria/")
+
+        self.assertEqual(
+            resposta.status_code,
+            200,
+            resposta.data
+        )
+
+        # 7. Verificar que apenas dois registros foram retornados.
+        self.assertEqual(len(resposta.data), 2)
+
+        # 8. Confirmar quais unidades aparecem na resposta.
+        unidades_retornadas = {
+            registro["registroAfetado"]
+            for registro in resposta.data
+        }
+
+        self.assertEqual(
+            unidades_retornadas,
+            {"Unidade 1", "Unidade 2"}
+        )
+
+    def test_cam_ve_registros_de_todos_os_distritos(self):
+        # 1. Criar dois distritos.
+        d1 = Distrito.objects.create(id="d1", nome="Distrito 1")
+        d2 = Distrito.objects.create(id="d2", nome="Distrito 2")
+
+        # 2. Criar unidades em distritos diferentes.
+        u1 = Unidade.objects.create(
+            id="u1",
+            nome="Unidade 1",
+            distrito=d1,
+            tipo=TipoUnidade.USF
+        )
+
+        u2 = Unidade.objects.create(
+            id="u2",
+            nome="Unidade 2",
+            distrito=d2,
+            tipo=TipoUnidade.USF
+        )
+
+        # 3. Criar usuário do grupo CAM/SECOGE.
+        Usuario = get_user_model()
+
+        cam = Usuario.objects.create_user(
+            username="cam_teste",
+            password="senha_teste_123"
+        )
+
+        cam.groups.add(
+            Group.objects.get(name="CAM/SECOGE")
+        )
+
+        # 4. Vincular o login a uma pessoa com perfil SEAB.
+        Avaliado.objects.create(
+            id="us1",
+            nome="CAM de Teste",
+            email="cam.teste@example.com",
+            perfil=PerfilId.SEAB,
+            usuario=cam
+        )
+
+        # 5. Criar registros de auditoria em dois distritos.
+        for unidade, distrito in [(u1, d1), (u2, d2)]:
+            registrar(
+                componente="cadastro",
+                usuario="Sistema de Teste",
+                perfil="Teste",
+                operacao="Alteração de teste",
+                registro_afetado=unidade.nome,
+                unidade_id=unidade.id,
+                distrito_id=distrito.id
+            )
+
+        # 6. Consultar como CAM/SECOGE.
+        self.client.force_authenticate(user=cam)
+
+        resposta = self.client.get("/api/auditoria/")
+
+        self.assertEqual(
+            resposta.status_code,
+            200,
+            resposta.data
+        )
+
+        # 7. Confirmar que ambos os registros estão visíveis.
+        self.assertEqual(len(resposta.data), 2)
+
+        unidades_retornadas = {
+            registro["registroAfetado"]
+            for registro in resposta.data
+        }
+
+        self.assertEqual(
+            unidades_retornadas,
+            {"Unidade 1", "Unidade 2"}
+        )
