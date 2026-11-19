@@ -139,7 +139,7 @@ REST_FRAMEWORK = {
     # não aceitar senha em cada requisição.
     # PerfilSimuladoAuthentication só age com DEBUG e SGGD_PERFIL_SIMULADO ligados.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "apps.acesso.autenticacao.PerfilSimuladoAuthentication",
+        #"apps.acesso.autenticacao.PerfilSimuladoAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     # Negar por padrão: toda view da API exige usuário autenticado, e as
@@ -149,8 +149,41 @@ REST_FRAMEWORK = {
     ],
     # O front trabalha com listas simples, como no mockData.ts.
     "DEFAULT_PAGINATION_CLASS": None,
+
+    # Rate limiting básico
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "300/min",
+    },
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "sggd-rate-limit",
+    }
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "sggd.seguranca": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -168,6 +201,11 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 

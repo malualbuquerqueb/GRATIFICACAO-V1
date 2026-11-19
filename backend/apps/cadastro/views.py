@@ -85,8 +85,8 @@ class CadastroViewSet(viewsets.ViewSet):
         if not isinstance(dados, dict):
             return Response({"detail": "Envie um objeto JSON."}, status=status.HTTP_400_BAD_REQUEST)
         # status só muda pelas ações inativar/reativar (que têm regra própria)
-        self.preencher(obj, dados)
         try:
+            self.preencher(obj, dados)
             services.salvar(obj, _autor(self.request))
         except ValidationError as e:
             return _erro(e)

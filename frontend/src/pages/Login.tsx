@@ -6,13 +6,25 @@ import './Login.css';
 export function Login() {
   const { entrar } = useApp();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('ana.souza@saude.gov.br');
-  const [senha, setSenha] = useState('••••••••');
+  
+  const [username, setUsername] = useState('');
+  const [senha, setSenha] = useState('');
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    entrar();
-    navigate('/dashboard');
+    setErro('');
+    setCarregando(true);
+
+    try {
+      await entrar(username.trim(), senha);
+      navigate('/dashboard', { replace: true });
+    } catch {
+      setErro('Não foi possível entrar. Verifique suas credenciais.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (
@@ -28,13 +40,15 @@ export function Login() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-field">
-            <label htmlFor="email">Usuário / e-mail institucional</label>
+            <label htmlFor="username">Nome de Usuário</label>
             <input
-              id="email"
+              id="username"
               type="text"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
+              required
+              disabled={carregando}
             />
           </div>
           <div className="form-field">
@@ -45,10 +59,23 @@ export function Login() {
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
               autoComplete="current-password"
+              required
+              disabled={carregando}
             />
           </div>
-          <button type="submit" className="btn btn-primary login-submit">
-            Entrar
+
+          {erro && (
+            <p role="alert" style={{ color: '#dc3545' }}>
+              {erro}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary login-submit"
+            disabled={carregando}
+          >
+            {carregando ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 

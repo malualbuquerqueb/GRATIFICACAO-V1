@@ -320,7 +320,7 @@ def importar(dados: dict, autor: Autor) -> dict:
                 except ValidationError as e:
                     erros.append({"secao": secao, "indice": indice, "erros": _mensagens(e)})
                 except IntegrityError as e:
-                    erros.append({"secao": secao, "indice": indice, "erros": str(e)})
+                    erros.append({"secao": secao, "indice": indice, "erros": "Conflito de integridade nos dados informados."})
         if erros:
             transaction.set_rollback(True)
 

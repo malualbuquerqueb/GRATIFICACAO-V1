@@ -11,8 +11,9 @@ from django.test import RequestFactory, TestCase, override_settings
 from rest_framework.test import APITestCase
 from apps.cadastro.interface import escopo_do_request
 from rest_framework.test import APIRequestFactory
+from django.conf import settings
 from apps.auditoria.interface import registros, registrar
-
+from apps.cadastro.models import Avaliado, Distrito, Unidade
 
 from apps.cadastro.models import Avaliado, PerfilId, Status, Distrito, Unidade, TipoUnidade
 
@@ -283,8 +284,42 @@ CONFIGURADOR_DEMO = {"HTTP_X_PERFIL": "configurador", "HTTP_X_USUARIO": "Patr%C3
 GESTOR_DEMO = {"HTTP_X_PERFIL": "gestor", "HTTP_X_USUARIO": "Ana"}
 
 
-@override_settings(DEBUG=True, SGGD_PERFIL_SIMULADO=True)
+@override_settings(
+    DEBUG=True,
+    SGGD_PERFIL_SIMULADO=True,
+    REST_FRAMEWORK={
+        **settings.REST_FRAMEWORK,
+        "DEFAULT_AUTHENTICATION_CLASSES": [
+            "apps.acesso.autenticacao.PerfilSimuladoAuthentication",
+            "rest_framework.authentication.SessionAuthentication",
+        ],
+    },
+)
 class PerfilSimuladoTest(APITestCase):
+    
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+        from apps.cadastro.views import CadastroViewSet
+        from apps.acesso.autenticacao import PerfilSimuladoAuthentication
+        from rest_framework.authentication import SessionAuthentication
+
+        cls._auth_original = CadastroViewSet.authentication_classes
+        CadastroViewSet.authentication_classes = [
+            PerfilSimuladoAuthentication,
+            SessionAuthentication,
+        ]
+
+    @classmethod
+    def tearDownClass(cls):
+        from apps.cadastro.views import CadastroViewSet
+
+        try:
+            CadastroViewSet.authentication_classes = cls._auth_original
+        finally:
+            super().tearDownClass()
+
     def setUp(self):
         services.importar(DADOS, services.Autor())
 
@@ -397,6 +432,29 @@ class EscopoTest(APITestCase):
 
     def test_vinculos_sem_escopo_continua_completo_para_a_apuracao(self):
         self.assertEqual(len(services.vinculos_unidade_pessoa()), 6)  # 4 gestores + 2 coordenadores ativos
+
+class ValidacaoEntradasSegurancaTest(TestCase):
+    def test_rejeita_cnes_invalido(self):
+        distrito = Distrito.objects.create(nome="Distrito Teste")
+        unidade = Unidade(nome="Unidade Teste", distrito=distrito, tipo="USF", cnes="123")
+        with self.assertRaises(ValidationError):
+            unidade.full_clean()
+
+    def test_rejeita_tipo_unidade_invalido(self):
+        distrito = Distrito.objects.create(nome="Distrito Teste")
+        unidade = Unidade(nome="Unidade Teste", distrito=distrito, tipo="INVALIDO")
+        with self.assertRaises(ValidationError):
+            unidade.full_clean()
+
+    def test_rejeita_email_invalido(self):
+        avaliado = Avaliado(nome="Pessoa Teste", email="email-invalido", perfil="seab")
+        with self.assertRaises(ValidationError):
+            avaliado.full_clean()
+
+    def test_rejeita_perfil_invalido(self):
+        avaliado = Avaliado(nome="Pessoa Teste", email="teste@example.com", perfil="INVALIDO")
+        with self.assertRaises(ValidationError):
+            avaliado.full_clean()
 
 
 class AuditoriaEscopoTest(APITestCase):

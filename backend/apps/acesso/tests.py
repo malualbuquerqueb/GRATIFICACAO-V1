@@ -6,6 +6,10 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.views import APIView
+from django.core.cache import cache
+from django.test import TestCase, override_settings
+from django.urls import reverse
+
 
 from .interface import ExigePermissao, usuario_tem_permissao
 from .models import Usuario
@@ -253,3 +257,42 @@ class OperacaoPorPapelNaApiTests(TestCase):
         resposta = self._post(_usuario_com_papeis("bia", "CAM/SECOGE"))
 
         self.assertEqual(resposta.status_code, status.HTTP_200_OK)
+
+
+@override_settings(
+    RATELIMIT_ENABLE=True,
+    RATELIMIT_USE_CACHE="default",
+)
+class RateLimitingLoginTest(TestCase):
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse("auth-login")
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_requisicoes_dentro_do_limite(self):
+        for _ in range(4):
+            resposta = self.client.post(
+                self.url,
+                data='{"username":"inexistente","password":"senha"}',
+                content_type="application/json",
+            )
+            self.assertEqual(resposta.status_code, 401)
+
+    def test_bloqueia_apos_exceder_limite(self):
+        for _ in range(5):
+            resposta = self.client.post(
+                self.url,
+                data='{"username":"inexistente","password":"senha"}',
+                content_type="application/json",
+            )
+            self.assertEqual(resposta.status_code, 401)
+
+        resposta = self.client.post(
+            self.url,
+            data='{"username":"inexistente","password":"senha"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resposta.status_code, 429)

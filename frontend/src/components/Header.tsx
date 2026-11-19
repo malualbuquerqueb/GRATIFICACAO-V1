@@ -1,18 +1,23 @@
 import { useNavigate } from 'react-router-dom';
 import { useApp, PERFIS } from '../context/AppContext';
-import type { PerfilId } from '../types';
+//import type { PerfilId } from '../types';
 import './Header.css';
 
 export function Header() {
-  const { perfilAtual, definirPerfil, usuarioAtual, competenciaId, competencias, definirCompetencia, sair } =
+  const { perfilAtual, usuarioAtual, competenciaId, competencias, definirCompetencia, sair } =
     useApp();
   const navigate = useNavigate();
   const competenciaAtual = competencias.find((c) => c.id === competenciaId);
   const perfilInfo = PERFIS.find((p) => p.id === perfilAtual);
 
-  function handleSair() {
-    sair();
-    navigate('/');
+  async function handleSair() {
+    try {
+      await sair();
+      navigate('/', { replace: true });
+    } catch (erro) {
+      console.error('Erro ao encerrar sessão:', erro);
+      alert('Não foi possível encerrar a sessão. Tente novamente.');
+    }
   }
 
   return (
@@ -40,14 +45,15 @@ export function Header() {
 
       <div className="app-header-right">
         <label className="header-field header-field--profile">
-          <span>Perfil de visualização</span>
-          <select value={perfilAtual} onChange={(e) => definirPerfil(e.target.value as PerfilId)}>
+          <span>Perfil</span>
+          {/* <select value={perfilAtual} onChange={(e) => definirPerfil(e.target.value as PerfilId)}>
             {PERFIS.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nome}
               </option>
             ))}
-          </select>
+          </select> */}
+          <strong>{perfilInfo?.nome ?? 'Não definido'}</strong>
         </label>
 
         <button className="header-notif" title="Notificações" type="button">
@@ -62,7 +68,7 @@ export function Header() {
             <div className="header-user-role">{perfilInfo?.nome}</div>
           </div>
         </div>
-        <button className="btn btn-sm" type="button" onClick={handleSair}>
+        <button className="btn btn-sm" type="button" onClick={() => void handleSair()}>
           Sair
         </button>
       </div>

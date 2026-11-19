@@ -19,8 +19,8 @@ import {
   REGISTROS_INICIAIS,
   AUDITORIA_INICIAL,
 } from '../data/mockData';
-import { api, definirIdentidade, ErroApi } from '../services/api';
-import type { DadosUnidade, DadosUsuario, ErrosCampos } from '../services/api';
+import { api, ErroApi } from '../services/api';
+import type { DadosUnidade, DadosUsuario, ErrosCampos, UsuarioAutenticado } from '../services/api';
 import { normalizarVinculo, proximoId, validarUnidade, validarUsuario } from '../utils/cadastro';
 
 /** Cadastro de distritos, unidades e pessoas (componente "cadastro" do backend). */
@@ -45,16 +45,20 @@ const AINDA_CARREGANDO: ResultadoCadastro = {
 
 interface AppContextValue {
   autenticado: boolean;
+  verificandoSessao: boolean;
   perfilAtual: PerfilId;
   usuarioAtual: string;
+  usuarioLogado: UsuarioAutenticado | null;
   competenciaId: string;
   competencias: typeof COMPETENCIAS;
   registros: RegistroIndicador[];
   auditoria: AuditoriaEntrada[];
   estadoAuditoria: EstadoAuditoria;
-  entrar: () => void;
-  sair: () => void;
-  definirPerfil: (perfil: PerfilId) => void;
+  // entrar: () => void; funções para login em ambiente simulado
+  // sair: () => void;
+  // definirPerfil: (perfil: PerfilId) => void;
+  entrar: (username: string, password: string) => Promise<void>;
+  sair: () => Promise<void>;
   definirCompetencia: (id: string) => void;
   salvarRascunho: (id: string, valor: number, observacoes?: string) => void;
   enviarParaRevisao: (id: string) => void;
@@ -72,10 +76,10 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
-function nomeUsuarioPorPerfil(perfil: PerfilId, usuarios: Usuario[]): string {
-  const usuario = usuarios.find((u) => u.perfilId === perfil && u.status === 'Ativo');
-  return usuario?.nome ?? 'Usuário';
-}
+// function nomeUsuarioPorPerfil(perfil: PerfilId, usuarios: Usuario[]): string {
+//   const usuario = usuarios.find((u) => u.perfilId === perfil && u.status === 'Ativo');
+//   return usuario?.nome ?? 'Usuário';
+// }
 
 function agora(): string {
   const d = new Date();
@@ -85,9 +89,41 @@ function agora(): string {
   )}`;
 }
 
+
+function perfilDoUsuario(usuario: UsuarioAutenticado): PerfilId {
+  const grupos = usuario.grupos;
+
+  if (grupos.includes('Configurador')) {
+    return 'configurador';
+  }
+
+  if (grupos.includes('CAM/SECOGE')) {
+    return 'seab';
+  }
+
+  if (grupos.includes('Avaliado')) {
+    // O grupo Avaliado não distingue gestor de coordenador.
+    // Essa diferenciação deverá vir do vínculo territorial.
+    return 'gestor';
+  }
+
+  return 'gestor';
+}
+
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [autenticado, setAutenticado] = useState(false);
-  const [perfilAtual, setPerfilAtual] = useState<PerfilId>('gestor');
+  // const [autenticado, setAutenticado] = useState(false); constantes para perfil em ambiente simulado
+  // const [perfilAtual, setPerfilAtual] = useState<PerfilId>('gestor');
+  const [usuarioLogado, setUsuarioLogado] =
+    useState<UsuarioAutenticado | null>(null);
+
+  const [verificandoSessao, setVerificandoSessao] = useState(true);
+
+  const autenticado = usuarioLogado !== null;
+
+  const perfilAtual: PerfilId = usuarioLogado
+    ? perfilDoUsuario(usuarioLogado)
+    : 'gestor';
   const [competenciaId, setCompetenciaId] = useState(COMPETENCIA_ATUAL_ID);
   const [registros, setRegistros] = useState<RegistroIndicador[]>(REGISTROS_INICIAIS);
   const [, setAuditoria] = useState<AuditoriaEntrada[]>(AUDITORIA_INICIAL);
@@ -97,42 +133,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [auditoriaApi, setAuditoriaApi] = useState<AuditoriaEntrada[]>([]);
   const [estadoAuditoria, setEstadoAuditoria] = useState<EstadoAuditoria>('carregando');
 
-  const usuarioAtual = nomeUsuarioPorPerfil(perfilAtual, cadastro.usuarios);
+  const usuarioAtual = usuarioLogado?.nome ?? '';
+  //const usuarioAtual = nomeUsuarioPorPerfil(perfilAtual, cadastro.usuarios); constantes para perfil em ambiente simulado
 
   // Enquanto não há login real, o backend sabe quem está operando por estes cabeçalhos
   // (modo demonstração do Controle de Acesso). Precisa vir antes da carga abaixo: a API
   // exige usuário autenticado também para leitura, e os efeitos rodam na ordem declarada.
-  useEffect(() => {
-    definirIdentidade({ perfil: perfilAtual, usuario: usuarioAtual });
-  }, [perfilAtual, usuarioAtual]);
+  // useEffect(() => {
+  //   definirIdentidade({ perfil: perfilAtual, usuario: usuarioAtual });
+  // }, [perfilAtual, usuarioAtual]);
+
+
+useEffect(() => {
+  let ativo = true;
+
+  async function verificarSessao() {
+    try {
+      const resposta = await api.usuarioAutenticado();
+
+      if (ativo) {
+        setUsuarioLogado(resposta.usuario);
+      }
+    } catch {
+      if (ativo) {
+        setUsuarioLogado(null);
+      }
+    } finally {
+      if (ativo) {
+        setVerificandoSessao(false);
+      }
+    }
+  }
+
+  void verificarSessao();
+
+  return () => {
+    ativo = false;
+  };
+}, []);
+
 
   // Carrega o cadastro do backend; se ele não estiver rodando, segue com o mockData.
   // Recarrega a cada troca de perfil: o backend só devolve o escopo de quem pede
   // (gestor: a unidade; coordenador: o distrito; SEAB/Configurador: o município).
-  useEffect(() => {
-    let ativo = true;
-    console.log('[Cadastro] Fonte atual:', fonteCadastro);
+  
+useEffect(() => {
+  let ativo = true;
 
-    Promise.all([api.listarDistritos(), api.listarUnidades(), api.listarUsuarios()])
-      .then(([distritos, unidades, usuarios]) => {
-        if (!ativo) return;
-        setCadastro({ distritos, unidades, usuarios });
-        setFonteCadastro('api');
-      })
-      .catch((erro) => {
-        console.error('[Cadastro] Erro ao carregar:', erro);
-        
-        if (ativo) setFonteCadastro('mock');
-      });
-      
-    console.log('[Cadastro] Fonte atual:', fonteCadastro);
-    return () => {
-      ativo = false;
-    };
-  }, [perfilAtual]);
+  if (!autenticado) {
+    setCadastro({ distritos: [], unidades: [], usuarios: [] });
+    setFonteCadastro('carregando');
+    return () => { ativo = false; };
+  }
+
+  setFonteCadastro('carregando');
+
+  Promise.all([
+    api.listarDistritos(),
+    api.listarUnidades(),
+    api.listarUsuarios(),
+  ])
+    .then(([distritos, unidades, usuarios]) => {
+      if (!ativo) return;
+      setCadastro({ distritos, unidades, usuarios });
+      setFonteCadastro('api');
+    })
+    .catch((erro) => {
+      if (!ativo) return;
+
+      console.error('[Cadastro] Erro ao carregar:', erro);
+      setCadastro({ distritos: [], unidades: [], usuarios: [] });
+      setFonteCadastro('carregando');
+    });
+
+  return () => {
+    ativo = false;
+  };
+}, [autenticado, usuarioLogado?.id]);
+
 
   //permite que a Auditoria seja carregada separadamente do Cadastro
   useEffect(() => {
+  if (!autenticado) {
+    setAuditoriaApi([]);
+    setEstadoAuditoria('carregando');
+    return;
+  }
   let ativo = true;
 
   setEstadoAuditoria('carregando');
@@ -163,7 +249,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return () => {
     ativo = false;
   };
-}, [perfilAtual]);
+}, [autenticado, usuarioLogado?.id]);
 
   const nomePerfilAtual = PERFIS.find((p) => p.id === perfilAtual)?.nome ?? '';
 
@@ -371,6 +457,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return [{ ...entrada, id: `h-${r.id}-${r.historico.length + 1}` }, ...r.historico];
   }
 
+
+  async function entrar(username: string, password: string): Promise<void> {
+    const resposta = await api.login(username, password);
+    setUsuarioLogado(resposta.usuario);
+  }
+
+  async function sair(): Promise<void> {
+    await api.logout();
+
+    setUsuarioLogado(null);
+    setCadastro({ distritos: [], unidades: [], usuarios: [] });
+    setFonteCadastro('carregando');
+    setAuditoriaApi([]);
+    setEstadoAuditoria('carregando');
+  }
+
+
   const value: AppContextValue = {
     autenticado,
     perfilAtual,
@@ -386,9 +489,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     alterarStatusUnidade,
     salvarUsuario,
     alterarStatusUsuario,
-    entrar: () => setAutenticado(true),
-    sair: () => setAutenticado(false),
-    definirPerfil: (perfil) => setPerfilAtual(perfil),
+    verificandoSessao,
+    usuarioLogado,
+    entrar,
+    sair,
+    //funções do ambiente simulado para login
+    // entrar: () => setAutenticado(true),
+    // sair: () => setAutenticado(false),
+    // definirPerfil: (perfil) => setPerfilAtual(perfil),
     definirCompetencia: (id) => setCompetenciaId(id),
     salvarRascunho: (id, valor, observacoes) => {
       atualizarRegistro(id, (r) => ({

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { podeAcessarRota } from '../utils/permissoes';
 import './Sidebar.css';
 
 interface NavItem {
@@ -20,8 +21,24 @@ const ITENS: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { perfilAtual, fonteCadastro } = useApp();
-  const itensVisiveis = ITENS.filter((item) => !item.perfis || item.perfis.includes(perfilAtual));
+  const { perfilAtual, fonteCadastro, usuarioLogado } = useApp();
+
+  const itensVisiveis = ITENS.filter((item) => {
+    if (!podeAcessarRota(usuarioLogado, item.to)) {
+      return false;
+    }
+
+    // Mantém temporariamente as regras existentes
+    // nas rotas ainda não migradas para permissões.
+    if (
+      item.to === '/configuracao-indicadores' ||
+      item.to === '/auditoria'
+    ) {
+      return true;
+    }
+
+    return !item.perfis || item.perfis.includes(perfilAtual);
+  });
 
   return (
     <aside className="sidebar">

@@ -3,7 +3,7 @@ from rest_framework import mixins, serializers, viewsets
 from apps.acesso.interface import ExigePermissao
 from apps.cadastro.interface import escopo_do_request
 from .models import RegistroAuditoria
-
+from apps.acesso.interface import ExigePermissao, usuario_tem_permissao
 
 class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     """Mesmo formato de AuditoriaEntrada (front)."""
@@ -50,18 +50,18 @@ class RegistroAuditoriaViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def get_queryset(self):
         qs = RegistroAuditoria.objects.all()
+        usuario = self.request.user
         escopo = escopo_do_request(self.request)
-        if escopo.vazio:
-            return qs.none()
-
-        if not escopo.municipal:
+        acesso_geral_cam = usuario.groups.filter(name="CAM/SECOGE").exists() and usuario_tem_permissao(usuario, "acesso.consultar_auditoria")
+        if not (usuario.is_superuser or acesso_geral_cam):
+            if escopo.vazio:
+                return qs.none()
             if escopo.unidade_id:
                 qs = qs.filter(unidade_id=escopo.unidade_id)
             elif escopo.distrito_id:
                 qs = qs.filter(distrito_id=escopo.distrito_id)
-            else:
+            elif not escopo.municipal:
                 return qs.none()
-
         if componente := self.request.query_params.get("componente"):
             qs = qs.filter(componente=componente)
         return qs[:500]

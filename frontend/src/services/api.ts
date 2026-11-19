@@ -6,16 +6,16 @@ import type { AuditoriaEntrada, Distrito, PerfilId, StatusCadastro, Unidade, Usu
 
 const BASE = '/api';
 
-interface Identidade {
-  perfil: PerfilId;
-  usuario: string;
-}
+// interface Identidade {
+//   perfil: PerfilId;
+//   usuario: string;
+// }
 
-let identidade: Identidade | null = null;
+// let identidade: Identidade | null = null;
 
-export function definirIdentidade(nova: Identidade) {
-  identidade = nova;
-}
+// export function definirIdentidade(nova: Identidade) {
+//   identidade = nova;
+// }
 
 export type ErrosCampos = Record<string, string[]>;
 
@@ -42,25 +42,88 @@ function normalizarErros(corpo: unknown): ErrosCampos {
   return { detail: ['Não foi possível falar com o servidor.'] };
 }
 
-async function requisicao<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (identidade) {
-    headers['X-Perfil'] = identidade.perfil;
-    // Cabeçalho HTTP não aceita acentos: vai codificado e o backend decodifica.
-    headers['X-Usuario'] = encodeURIComponent(identidade.usuario);
+// async function requisicao<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
+//   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+//   if (identidade) {
+//     headers['X-Perfil'] = identidade.perfil;
+//     // Cabeçalho HTTP não aceita acentos: vai codificado e o backend decodifica.
+//     headers['X-Usuario'] = encodeURIComponent(identidade.usuario);
+//   }
+
+//   const resposta = await fetch(`${BASE}${caminho}`, { ...opcoes, headers });
+//   const texto = await resposta.text();
+//   let corpo: unknown = null;
+//   try {
+//     corpo = texto ? JSON.parse(texto) : null;
+//   } catch {
+//     throw new ErroApi(resposta.status || 503, { detail: ['Backend indisponível.'] });
+//   }
+//   if (!resposta.ok) throw new ErroApi(resposta.status, normalizarErros(corpo));
+//   return corpo as T;
+// }
+
+
+let csrfToken: string | null = null;
+
+async function prepararCsrf(): Promise<string> {
+  const resposta = await fetch('/api/auth/csrf/', {
+    credentials: 'same-origin',
+  });
+
+  if (!resposta.ok) {
+    throw new Error('Não foi possível preparar a autenticação.');
   }
 
-  const resposta = await fetch(`${BASE}${caminho}`, { ...opcoes, headers });
+  const dados = await resposta.json();
+  csrfToken = dados.csrfToken;
+  return csrfToken!;
+}
+
+async function requisicao<T>(
+  caminho: string,
+  opcoes: RequestInit = {},
+): Promise<T> {
+  const metodo = (opcoes.method ?? 'GET').toUpperCase();
+  const precisaCsrf = !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(metodo);
+
+  if (precisaCsrf) {
+    await prepararCsrf();
+  }
+
+  const headers = new Headers(opcoes.headers);
+
+  if (opcoes.body != null && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (precisaCsrf && csrfToken) {
+    headers.set('X-CSRFToken', csrfToken);
+  }
+
+  const resposta = await fetch(`${BASE}${caminho}`, {
+    ...opcoes,
+    credentials: 'same-origin',
+    headers,
+  });
+
   const texto = await resposta.text();
   let corpo: unknown = null;
+
   try {
     corpo = texto ? JSON.parse(texto) : null;
   } catch {
-    throw new ErroApi(resposta.status || 503, { detail: ['Backend indisponível.'] });
+    throw new ErroApi(resposta.status || 503, {
+      detail: ['Resposta inválida do servidor.'],
+    });
   }
-  if (!resposta.ok) throw new ErroApi(resposta.status, normalizarErros(corpo));
+
+  if (!resposta.ok) {
+    throw new ErroApi(resposta.status, normalizarErros(corpo));
+  }
+
   return corpo as T;
 }
+
 
 // A API devolve null em campos vazios; os tipos do front usam campos opcionais.
 function semNulos<T extends object>(obj: T): T {
@@ -85,7 +148,40 @@ export interface DadosUsuario {
 
 const json = (dados: unknown) => JSON.stringify(dados);
 
+
+export interface UsuarioAutenticado {
+  id: number;
+  username: string;
+  nome: string;
+  grupos: string[];
+  permissoes: string[];
+  is_staff: boolean;
+  is_superuser: boolean;
+}
+
+export interface RespostaAutenticacao {
+  usuario: UsuarioAutenticado;
+}
+
+
 export const api = {
+  login: (username: string, password: string) =>
+    requisicao<RespostaAutenticacao>('/auth/login/', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  usuarioAutenticado: () =>
+    requisicao<RespostaAutenticacao>('/auth/me/'),
+
+  logout: async () => {
+    await prepararCsrf();
+    await requisicao<{ message: string }>('/auth/logout/', {
+      method: 'POST',
+    });
+    csrfToken = null;
+  },
+
   listarDistritos: () => requisicao<Distrito[]>('/distritos/'),
   listarUnidades: () => requisicao<Unidade[]>('/unidades/').then((l) => l.map(semNulos)),
   listarUsuarios: () => requisicao<Usuario[]>('/usuarios/').then((l) => l.map(semNulos)),
