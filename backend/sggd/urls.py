@@ -8,5 +8,5 @@ urlpatterns = [
     path("api/auth/", include("apps.acesso.urls")),
     path("api/", include("apps.cadastro.urls")),
     path("api/", include("apps.auditoria.urls")),
-    
+    path("api/normativa/", include("apps.normativa.urls")),
 ]
