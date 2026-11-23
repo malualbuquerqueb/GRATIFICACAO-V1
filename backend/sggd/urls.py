@@ -2,11 +2,14 @@
 
 from django.contrib import admin
 from django.urls import include, path
+from sggd.health import health
+from sggd.observability import observability_check
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.acesso.urls")),
     path("api/", include("apps.cadastro.urls")),
     path("api/", include("apps.auditoria.urls")),
-    
+    path("health/", health, name="health"),
+    path("observability-check/", observability_check,name="observability-check",),
 ]

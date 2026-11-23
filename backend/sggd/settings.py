@@ -38,6 +38,20 @@ def _obrigatoria(nome):
             f"Defina a variável de ambiente {nome} (veja backend/.env.example)."
         ) from None
 
+def _bool_env(nome, padrao=False):
+    valor = os.environ.get(nome)
+    if valor is None:
+        return padrao
+    return valor.lower() in ("1", "true", "yes", "on")
+
+
+def _lista_env(nome, padrao=""):
+    return [
+        item.strip()
+        for item in os.environ.get(nome, padrao).split(",")
+        if item.strip()
+    ]
+
 
 _carregar_env(BASE_DIR / ".env")
 
@@ -47,13 +61,12 @@ _carregar_env(BASE_DIR / ".env")
 SECRET_KEY = _obrigatoria("DJANGO_SECRET_KEY")
 
 # Desligado por padrão: só ative (DJANGO_DEBUG=1) em desenvolvimento.
-DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+DEBUG = _bool_env("DJANGO_DEBUG", False)
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if host.strip()
-]
+ALLOWED_HOSTS = _lista_env(
+    "DJANGO_ALLOWED_HOSTS",
+    "localhost,127.0.0.1"
+)
 
 # Modo demonstração do protótipo (apps/acesso/autenticacao.py): o perfil escolhido
 # no seletor do front (cabeçalho X-Perfil) vira um usuário de demonstração com o
@@ -85,6 +98,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -124,6 +138,13 @@ DATABASES = {
         "PASSWORD": _obrigatoria("POSTGRES_PASSWORD"),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": (
+            {"sslmode": "verify-full", "sslrootcert": os.environ["POSTGRES_SSL_ROOT_CERT"]}
+            if os.environ.get("POSTGRES_SSL_ROOT_CERT")
+            else {}
+        ),
     }
 }
 
@@ -203,10 +224,37 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+CSRF_TRUSTED_ORIGINS = _lista_env(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173"
+)
+
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Ativar apenas quando a aplicação estiver atrás
+# de um proxy confiável corretamente configurado.
+if _bool_env("DJANGO_TRUST_PROXY", False):
+    SECURE_PROXY_SSL_HEADER = (
+        "HTTP_X_FORWARDED_PROTO",
+        "https",
+    )
+
+SECURE_SSL_REDIRECT = _bool_env(
+    "DJANGO_SECURE_SSL_REDIRECT",
+    False,
+)
+
+SECURE_HSTS_SECONDS = int(
+    os.environ.get("DJANGO_HSTS_SECONDS", "0")
+)
 
 
 # Internationalization
@@ -224,7 +272,17 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage."
+            "CompressedManifestStaticFilesStorage"
+        )
+    }
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
