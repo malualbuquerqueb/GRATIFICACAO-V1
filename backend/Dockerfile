@@ -31,11 +31,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["opentelemetry-instrument", "gunicorn", \
-     "sggd.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--timeout", "60", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && exec opentelemetry-instrument gunicorn sggd.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 60 --access-logfile - --error-logfile -"]
