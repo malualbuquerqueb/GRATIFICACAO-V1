@@ -12,6 +12,9 @@ type = independence
 modules = apps.*
 ignore_imports =
     apps.** -> apps.*.interface
+    # Testes podem montar cenários usando outros componentes
+    apps.*.tests -> apps.**
+    apps.*.tests.** -> apps.**
 unmatched_ignore_imports_alerting = none
 
 [importlinter:contract:acesso-sem-regras-de-negocio]
