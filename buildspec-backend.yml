@@ -1,0 +1,36 @@
+version: 0.2
+env:
+  variables:
+    COV_MIN: "50"
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - pip install -q -r backend/requirements.txt coverage bandit pip-audit
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  pre_build:
+    commands:
+      - docker run -d --name pg -e POSTGRES_DB=sggd -e POSTGRES_USER=sggd -e POSTGRES_PASSWORD=ci -p 5432:5432 public.ecr.aws/docker/library/postgres:16
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin ${ECR_REPO_URI%%/*}
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
+      - cd $CODEBUILD_SRC_DIR/backend
+      - echo "== FF1 Modularidade (import-linter)" && lint-imports
+      - echo "== FF2 Seguranca do codigo (bandit)" && bandit -r . -x ./.venv,./tests -ll
+      - echo "== FF3 Dependencias vulneraveis (pip-audit)" && pip-audit -r requirements.txt
+      - for i in $(seq 1 20); do docker exec pg pg_isready -U sggd && break; sleep 2; done
+      - echo "== FF4 Testabilidade (cobertura >= $COV_MIN%)"
+      - export DJANGO_SECRET_KEY=ci POSTGRES_DB=sggd POSTGRES_USER=sggd POSTGRES_PASSWORD=ci POSTGRES_HOST=localhost POSTGRES_PORT=5432
+      - coverage run manage.py test && coverage report --fail-under=$COV_MIN
+  build:
+    commands:
+      - cd $CODEBUILD_SRC_DIR/backend
+      - docker build --provenance=false -t $ECR_REPO_URI:$IMAGE_TAG .
+      - echo "== FF5 Seguranca da imagem (trivy)"
+      - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress --db-repository public.ecr.aws/aquasecurity/trivy-db $ECR_REPO_URI:$IMAGE_TAG
+      - docker push $ECR_REPO_URI:$IMAGE_TAG
+      - cd $CODEBUILD_SRC_DIR
+      - printf '[{"name":"backend","imageUri":"%s"}]' $ECR_REPO_URI:$IMAGE_TAG > imagedefinitions.json
+artifacts:
+  files:
+    - imagedefinitions.json
