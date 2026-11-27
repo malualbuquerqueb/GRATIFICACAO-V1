@@ -3,6 +3,12 @@
 // Enquanto não há login real, o perfil escolhido no Header vai no cabeçalho X-Perfil.
 
 import type { AuditoriaEntrada, Distrito, PerfilId, StatusCadastro, Unidade, Usuario } from '../types';
+import type {
+  Normativa,
+  CompetenciaNormativa,
+  IndicadorNormativa,
+  RegraCalculo,
+} from '../types/normativa';
 
 const BASE = '/api';
 
@@ -204,4 +210,32 @@ export const api = {
     requisicao<Usuario>(`/usuarios/${id}/${status === 'Ativo' ? 'reativar' : 'inativar'}/`, {
       method: 'POST',
     }).then(semNulos),
+
+  // ==========================================
+  // Normativa e Indicadores
+  // ==========================================
+
+  listarNormativas: () =>
+    requisicao<Normativa[]>('/normativa/normativas/'),
+
+  listarCompetenciasNormativa: () =>
+    requisicao<CompetenciaNormativa[]>(
+      '/normativa/competencias/'
+    ),
+
+  listarIndicadoresNormativa: (normativaId?: number) =>
+    requisicao<IndicadorNormativa[]>(
+      '/normativa/indicadores/' +
+      (normativaId !== undefined
+        ? `?normativa=${normativaId}`
+        : '')
+    ),
+
+  listarRegrasCalculo: (indicadorId?: number) =>
+    requisicao<RegraCalculo[]>(
+      '/normativa/regras/' +
+      (indicadorId !== undefined
+        ? `?indicador=${indicadorId}`
+        : '')
+    ),
 };
