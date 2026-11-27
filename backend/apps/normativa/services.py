@@ -556,6 +556,7 @@ def _exige(usuario, permissao):
 
 def _auditar(usuario, operacao, entidade, identificador, anterior, novo):
     registrar(
+        componente="normativa",
         usuario=usuario,
         operacao=operacao,
         entidade=entidade,

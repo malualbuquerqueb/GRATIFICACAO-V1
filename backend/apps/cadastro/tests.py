@@ -233,7 +233,7 @@ class ApiTest(APITestCase):
         self.assertEqual(self.client.delete("/api/unidades/u5/").status_code, 405)
 
         reg = registros().filter(operacao="Unidade cadastrada").latest("id")
-        self.assertEqual(reg.usuario, "Patrícia Gomes Freitas")
+        self.assertEqual(reg.usuario_identificacao, "Patrícia Gomes Freitas")
         self.assertEqual(reg.perfil, "Configurador")
 
     def test_erros_com_nome_do_campo_do_front(self):
@@ -329,7 +329,7 @@ class PerfilSimuladoTest(APITestCase):
         )
         self.assertEqual(r.status_code, 201, r.data)
         reg = registros().filter(operacao="Unidade cadastrada").latest("id")
-        self.assertEqual(reg.usuario, "Patrícia Gomes Freitas")
+        self.assertEqual(reg.usuario_identificacao, "Patrícia Gomes Freitas")
         self.assertEqual(reg.perfil, "Configurador SAB")
 
     def test_gestor_do_seletor_le_mas_nao_cadastra(self):

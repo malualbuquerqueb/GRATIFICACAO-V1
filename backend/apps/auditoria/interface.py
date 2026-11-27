@@ -7,7 +7,7 @@ Quem for evoluir a tela de auditoria deve manter estas duas funções.
 
 from dataclasses import dataclass
 from datetime import datetime
-
+from django.contrib.auth import get_user_model
 from .models import RegistroAuditoria
 
 
@@ -21,28 +21,95 @@ class RegistroConsulta:
     entidade: str
     identificador: str
     valor_anterior: str
-    valor_novo: str
+    novo_valor: str
 
 
-def registrar(*, usuario, operacao, entidade, identificador, valor_anterior="", valor_novo=""):
-    """Guarda um fato. O chamador já conferiu a permissão da operação dele.
+def registrar(
+    *,
+    usuario,
+    operacao: str,
+    componente: str = "normativa",
+    entidade: str = "",
+    identificador: str = "",
+    perfil: str = "",
+    registro_afetado: str = "",
+    valor_anterior: str = "",
+    valor_novo: str | None = None,
+    novo_valor: str | None = None,
+    localizacao: str = "",
+    unidade_id: str | None = None,
+    distrito_id: str | None = None,
+):
+    """Registra operações dos componentes na auditoria centralizada."""
 
-    `operacao` é o nome do que aconteceu (ex.: cadastrar_indicador).
-    `entidade` é o tipo do registro (ex.: indicador, normativa).
-    `identificador` é a chave legível, não só o id numérico.
-    `valor_anterior` e `valor_novo` são textos, em geral JSON.
-    """
-    if not usuario or not getattr(usuario, "is_authenticated", False):
-        raise ValueError("O registro de auditoria precisa de um usuário autenticado.")
+    usuario_obj = None
+
+    # Compatibilidade com o contrato original de Cadastro.
+    if isinstance(usuario, str):
+        if componente != "cadastro":
+            raise ValueError(
+                "Identificação textual permitida apenas "
+                "para o contrato legado de Cadastro."
+            )
+
+        usuario_identificacao = usuario.strip()
+
+        if not usuario_identificacao:
+            raise ValueError(
+                "A identificação do usuário é obrigatória."
+            )
+
+    # Contrato utilizado por Normativa.
+    elif (
+        isinstance(usuario, get_user_model())
+        and usuario.is_authenticated
+        and usuario.pk is not None
+    ):
+        usuario_obj = usuario
+        usuario_identificacao = usuario.get_username()
+
+    else:
+        raise ValueError(
+            "É necessário informar um autor válido."
+        )
+
+    # Normaliza os dois nomes utilizados para o novo valor.
+    if (
+        novo_valor is not None
+        and valor_novo is not None
+        and novo_valor != valor_novo
+    ):
+        raise ValueError(
+            "Os parâmetros novo_valor e valor_novo "
+            "não podem possuir valores diferentes."
+        )
+
+    valor_final = (
+        novo_valor
+        if novo_valor is not None
+        else valor_novo
+    )
+
+    # Mantém a descrição esperada pelo frontend.
+    if not registro_afetado:
+        registro_afetado = (
+            f"{entidade} {identificador}".strip()
+        )
 
     return RegistroAuditoria.objects.create(
-        usuario=usuario,
-        usuario_identificacao=usuario.get_username(),
+        usuario=usuario_obj,
+        usuario_identificacao=usuario_identificacao,
+        componente=componente,
+        perfil=perfil,
         operacao=operacao,
         entidade=entidade,
         identificador=identificador,
+        registro_afetado=registro_afetado,
         valor_anterior=valor_anterior or "",
-        valor_novo=valor_novo or "",
+        novo_valor=valor_final or "",
+        localizacao=localizacao,
+        unidade_id=unidade_id,
+        distrito_id=distrito_id,
     )
 
 
@@ -52,7 +119,7 @@ def consultar(*, entidade="", identificador=""):
     Filtros vazios não restringem. Serve para a futura tela de auditoria e
     para os outros componentes conferirem o que enviaram.
     """
-    consulta = RegistroAuditoria.objects.all()
+    consulta = RegistroAuditoria.objects.order_by("id")
     if entidade:
         consulta = consulta.filter(entidade=entidade)
     if identificador:
@@ -67,7 +134,17 @@ def consultar(*, entidade="", identificador=""):
             entidade=registro.entidade,
             identificador=registro.identificador,
             valor_anterior=registro.valor_anterior,
-            valor_novo=registro.valor_novo,
+            novo_valor=registro.novo_valor,
         )
         for registro in consulta
     ]
+
+def registros(componente=None):
+    """Retorna os registros de auditoria para consultas internas."""
+
+    consulta = RegistroAuditoria.objects.all()
+
+    if componente is not None:
+        consulta = consulta.filter(componente=componente)
+
+    return consulta

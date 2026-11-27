@@ -9,6 +9,7 @@ class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     """Mesmo formato de AuditoriaEntrada (front)."""
 
     id = serializers.SerializerMethodField()
+    usuario = serializers.CharField(source="usuario_identificacao",read_only=True,)
     data = serializers.SerializerMethodField()
     horario = serializers.SerializerMethodField()
     registroAfetado = serializers.CharField(source="registro_afetado")
@@ -35,10 +36,10 @@ class RegistroAuditoriaSerializer(serializers.ModelSerializer):
         return f"api-aud-{obj.pk}"
 
     def get_data(self, obj) -> str:
-        return timezone.localtime(obj.data_hora).strftime("%d/%m/%Y")
+        return timezone.localtime(obj.ocorrido_em).strftime("%d/%m/%Y")
 
     def get_horario(self, obj) -> str:
-        return timezone.localtime(obj.data_hora).strftime("%H:%M")
+        return timezone.localtime(obj.ocorrido_em).strftime("%H:%M")
 
 
 class RegistroAuditoriaViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

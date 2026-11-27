@@ -15,7 +15,7 @@ class RegistroAuditoriaAdmin(admin.ModelAdmin):
         "identificador",
     )
     list_filter = ("entidade", "operacao")
-    search_fields = ("identificador", "usuario_identificacao", "valor_novo")
+    search_fields = ("identificador", "usuario_identificacao", "novo_valor")
     readonly_fields = (
         "ocorrido_em",
         "usuario",
@@ -24,7 +24,7 @@ class RegistroAuditoriaAdmin(admin.ModelAdmin):
         "entidade",
         "identificador",
         "valor_anterior",
-        "valor_novo",
+        "novo_valor",
     )
 
     def has_add_permission(self, request):

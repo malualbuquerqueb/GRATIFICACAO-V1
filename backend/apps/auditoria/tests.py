@@ -76,7 +76,17 @@ class AuditoriaEscopoTest(APITestCase):
         Avaliado.objects.create(id="us2", nome="Coordenador Teste", email="coordenador-teste@example.com", perfil="coordenador", distrito=self.d1, usuario=self.coordenador)
         self.registros = {}
         for nome, unidade, distrito in [("u1", self.u1, self.d1), ("u2", self.u2, self.d1), ("u3", self.u3, self.d2), ("d1", None, self.d1), ("d2", None, self.d2)]:
-            registro = RegistroAuditoria.objects.create(componente="cadastro", usuario="sistema", perfil="Configurador", operacao=f"Operação {nome}", registro_afetado=nome, localizacao=nome, unidade=unidade, distrito=distrito)
+            registro = RegistroAuditoria.objects.create(
+                        componente="cadastro",
+                        usuario=None,
+                        usuario_identificacao="sistema",
+                        perfil="Configurador",
+                        operacao=f"Operação {nome}",
+                        registro_afetado=nome,
+                        localizacao=nome,
+                        unidade=unidade,
+                        distrito=distrito,
+                    )
             self.registros[nome] = f"api-aud-{registro.pk}"
     def consultar_ids(self, usuario):
         self.client.force_authenticate(user=usuario)
