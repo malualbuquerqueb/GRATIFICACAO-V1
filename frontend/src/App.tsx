@@ -38,10 +38,6 @@ export default function App() {
               <Route path="/validacao" element={<RotaComPermissao rota="/validacao"> <Validacao /> </RotaComPermissao>} />
               <Route path="/fechamento" element={<RotaComPermissao rota="/fechamento"> <Fechamento /> </RotaComPermissao>} />
               <Route
-                path="/configuracao-indicadores"
-                element={<ConfiguracaoIndicadores />}
-              />
-              <Route
                 path="/usuarios-permissoes"
                 element={<RotaComPermissao rota="/usuarios-permissoes"> <UsuariosPermissoes /> </RotaComPermissao>}
               />

@@ -102,7 +102,10 @@ def cadastrar_competencia(usuario, dados):
     _exige(usuario, PERMISSAO_INDICADOR)
     dados = _mapa(dados)
     with transaction.atomic():
-        normativa = _normativa_por_id(dados.get("normativa") or dados.get("normativa_id"))
+        normativa = _normativa_por_id(
+            dados.get("normativa") or dados.get("normativa_id"),
+            travar=True,
+        )
         ano = _inteiro(dados.get("ano"), "ano")
         mes = _inteiro(dados.get("mes"), "mes")
         if Competencia.objects.filter(ano=ano, mes=mes).exists():
@@ -125,6 +128,7 @@ def cadastrar_indicador(usuario, dados):
     dados = _mapa(dados)
     with transaction.atomic():
         indicador = _montar_indicador(dados)
+        _exige_normativa_editavel(indicador.normativa)
         _salvar(indicador)
         _auditar(
             usuario,
@@ -141,7 +145,11 @@ def atualizar_indicador(usuario, indicador_id, dados):
     _exige(usuario, PERMISSAO_INDICADOR)
     dados = _mapa(dados)
     with transaction.atomic():
+        indicador = Indicador.objects.select_for_update().get(pk=indicador_id)
         indicador = Indicador.objects.select_related("normativa", "pai").get(pk=indicador_id)
+        Normativa.objects.select_for_update().get(pk=indicador.normativa_id)
+        _exige_normativa_editavel(indicador.normativa)
+        Indicador.objects.select_for_update().filter(pai=indicador).exists()
         anterior = _foto_indicador(indicador)
         if "codigo" in dados:
             indicador.codigo = _texto(dados.get("codigo"), "codigo")
@@ -178,10 +186,11 @@ def configurar_regra(usuario, dados):
     _exige(usuario, PERMISSAO_REGRA)
     dados = _mapa(dados)
     with transaction.atomic():
-        indicador = _indicador_por_referencia(dados)
+        indicador = _indicador_por_referencia(dados, travar=True)
+        _exige_normativa_editavel(indicador.normativa)
         cargo = _texto(dados.get("cargo"), obrigatorio=False)
         tipo_unidade = _texto(dados.get("tipo_unidade"), obrigatorio=False)
-        regra = RegraCalculo.objects.filter(
+        regra = RegraCalculo.objects.select_for_update().filter(
             indicador=indicador,
             cargo=cargo,
             tipo_unidade=tipo_unidade,
@@ -219,7 +228,8 @@ def importar_indicadores(usuario, normativa_id, conteudo):
     if not texto:
         raise ValidationError({"arquivo": "O arquivo está vazio."})
 
-    normativa = _normativa_por_id(normativa_id)
+    normativa = _normativa_por_id(normativa_id, travar=True)
+    _exige_normativa_editavel(normativa)
     linhas = _ler_csv(texto)
     grupos, erros = _agrupar_linhas(linhas)
     if erros:
@@ -231,7 +241,12 @@ def importar_indicadores(usuario, normativa_id, conteudo):
 
 
 def _gravar_grupos(usuario, normativa, grupos):
-    existentes = {item.codigo: item for item in Indicador.objects.filter(normativa=normativa)}
+    existentes = {
+        item.codigo: item
+        for item in Indicador.objects.select_for_update().filter(
+            normativa=normativa
+        )
+    }
     gravados = []
     for codigo, grupo in grupos.items():
         indicador = existentes.get(codigo)
@@ -458,7 +473,10 @@ def _normalizar_coluna(nome):
 
 
 def _montar_indicador(dados, conhecidos=None):
-    normativa = _normativa_por_id(dados.get("normativa") or dados.get("normativa_id"))
+    normativa = _normativa_por_id(
+        dados.get("normativa") or dados.get("normativa_id"),
+        travar=True,
+    )
     codigo = _texto(dados.get("codigo"), "codigo")
     if Indicador.objects.filter(normativa=normativa, codigo=codigo).exists():
         raise ValidationError({"codigo": "Já existe indicador com este código nesta normativa."})
@@ -492,7 +510,10 @@ def _resolver_pai(normativa, codigo_pai, nivel, conhecidos=None):
     if conhecidos is not None:
         pai = conhecidos.get(codigo_pai)
     if pai is None:
-        pai = Indicador.objects.filter(normativa=normativa, codigo=codigo_pai).first()
+        pai = Indicador.objects.select_for_update().filter(
+            normativa=normativa,
+            codigo=codigo_pai,
+        ).first()
     if pai is None:
         raise ValidationError({"pai": f"O indicador pai '{codigo_pai}' não existe nesta normativa."})
     return pai
@@ -504,22 +525,39 @@ def _pai_informado(normativa, dados, nivel):
     elif dados.get("pai") in ("", None):
         codigo = ""
     else:
-        pai = Indicador.objects.filter(pk=dados.get("pai"), normativa=normativa).first()
+        pai = Indicador.objects.select_for_update().filter(
+            pk=dados.get("pai"),
+            normativa=normativa,
+        ).first()
         if pai is None and dados.get("pai") not in ("", None):
             raise ValidationError({"pai": "Indicador pai não encontrado nesta normativa."})
         return pai if nivel != NivelIndicador.INDICADOR else None
     return _resolver_pai(normativa, codigo, nivel)
 
 
-def _indicador_por_referencia(dados):
+def _indicador_por_referencia(dados, travar=False):
     if dados.get("indicador"):
-        indicador = Indicador.objects.filter(pk=dados.get("indicador")).first()
+        consulta = Indicador.objects.select_related("normativa")
+        if travar:
+            consulta = consulta.select_for_update()
+        indicador = consulta.filter(pk=dados.get("indicador")).first()
         if indicador is None:
             raise ValidationError({"indicador": "Indicador não encontrado."})
+        if travar:
+            Normativa.objects.select_for_update().get(pk=indicador.normativa_id)
         return indicador
-    normativa = _normativa_por_id(dados.get("normativa") or dados.get("normativa_id"))
+    normativa = _normativa_por_id(
+        dados.get("normativa") or dados.get("normativa_id"),
+        travar=travar,
+    )
     codigo = _texto(dados.get("codigo"), "codigo")
-    indicador = Indicador.objects.filter(normativa=normativa, codigo=codigo).first()
+    consulta = Indicador.objects.select_related("normativa").filter(
+        normativa=normativa,
+        codigo=codigo,
+    )
+    if travar:
+        consulta = consulta.select_for_update()
+    indicador = consulta.first()
     if indicador is None:
         raise ValidationError({"codigo": "Indicador não encontrado nesta normativa."})
     return indicador
@@ -535,10 +573,13 @@ def _preencher_regra(regra, dados):
         regra.meta = _decimal(dados.get("meta"), "meta", obrigatorio=False)
 
 
-def _normativa_por_id(valor):
+def _normativa_por_id(valor, travar=False):
     if valor in ("", None):
         raise ValidationError({"normativa": "Informe a normativa."})
-    normativa = Normativa.objects.filter(pk=valor).first()
+    consulta = Normativa.objects
+    if travar:
+        consulta = consulta.select_for_update()
+    normativa = consulta.filter(pk=valor).first()
     if normativa is None:
         raise ValidationError({"normativa": "Normativa não encontrada."})
     return normativa
@@ -552,6 +593,16 @@ def _salvar(objeto):
 def _exige(usuario, permissao):
     if not usuario_tem_permissao(usuario, permissao):
         raise PermissionDenied
+
+
+def _exige_normativa_editavel(normativa):
+    if Competencia.objects.filter(normativa=normativa).exists():
+        raise ValidationError({
+            "normativa": (
+                "A normativa já está vinculada a competência e não pode "
+                "ser alterada. Crie uma nova normativa para uma nova vigência."
+            )
+        })
 
 
 def _auditar(usuario, operacao, entidade, identificador, anterior, novo):

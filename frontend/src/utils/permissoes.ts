@@ -28,9 +28,7 @@ export function podeAcessarRota(
 
   const permissao = PERMISSOES_ROTAS[rota];
 
-  // Rotas ainda sem regra específica serão tratadas
-  // nas próximas etapas de validação do RBAC.
-  if (!permissao) return true;
+  if (!permissao) return false;
 
   return usuario.permissoes.includes(permissao);
 }

@@ -275,7 +275,7 @@ class ApiTest(APITestCase):
         self.assertEqual(primeiro["operacao"], "Vínculo alterado")
         self.assertEqual(
             set(primeiro.keys()),
-            {"id", "usuario", "data", "horario", "operacao", "registroAfetado", "valorAnterior", "novoValor", "perfil", "localizacao", "componente"},
+            {"id", "usuario", "data", "horario", "operacao", "registroAfetado", "valorAnterior", "novoValor", "perfil", "localizacao", "componente", "entidade", "identificador"},
         )
 
 

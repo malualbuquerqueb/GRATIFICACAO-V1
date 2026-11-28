@@ -17,7 +17,7 @@ from .interface import (
     regras_para_apuracao,
     soma_pesos_de_primeiro_nivel,
 )
-from .models import Indicador, RegraCalculo
+from .models import Competencia, Indicador, Normativa, RegraCalculo
 
 EXEMPLO = Path(__file__).resolve().parent / "exemplo_indicadores.csv"
 SENHA = "Senha-de-teste-123"
@@ -60,10 +60,6 @@ class CadastroTests(TestCase):
 
     def test_cadastro_de_normativa_competencia_e_indicador_vai_para_auditoria(self):
         normativa = self._normativa()
-        services.cadastrar_competencia(
-            self.configurador,
-            {"normativa": normativa.id, "ano": 2025, "mes": 2},
-        )
         indicador = services.cadastrar_indicador(
             self.configurador,
             {
@@ -84,6 +80,10 @@ class CadastroTests(TestCase):
                 "meta": "100",
             },
         )
+        services.cadastrar_competencia(
+            self.configurador,
+            {"normativa": normativa.id, "ano": 2025, "mes": 2},
+        )
 
         self.assertEqual(regra.peso_portaria, Decimal("20.00"))
         self.assertEqual(regra.peso_vigente, Decimal("0.00"))
@@ -103,6 +103,67 @@ class CadastroTests(TestCase):
             )
 
         self.assertIn("vigência", str(bloco.exception))
+
+    def test_normativa_vinculada_nao_e_mutada_retroativamente(self):
+        normativa = self._normativa()
+        indicador = services.cadastrar_indicador(
+            self.configurador,
+            {
+                "normativa": normativa.id,
+                "codigo": "1",
+                "nome": "Indicador original",
+            },
+        )
+        regra = services.configurar_regra(
+            self.configurador,
+            {
+                "indicador": indicador.id,
+                "peso_portaria": "20",
+                "meta": "90",
+            },
+        )
+        services.cadastrar_competencia(
+            self.configurador,
+            {"normativa": normativa.id, "ano": 2025, "mes": 2},
+        )
+
+        before = consultar(entidade="indicador")
+        with self.assertRaises(ValidationError) as update_error:
+            services.atualizar_indicador(
+                self.configurador,
+                indicador.id,
+                {"nome": "Nome alterado"},
+            )
+        self.assertIn("não pode ser alterada", str(update_error.exception))
+
+        with self.assertRaises(ValidationError) as rule_error:
+            services.configurar_regra(
+                self.configurador,
+                {
+                    "indicador": indicador.id,
+                    "peso_portaria": "30",
+                    "meta": "95",
+                },
+            )
+        self.assertIn("não pode ser alterada", str(rule_error.exception))
+
+        with self.assertRaises(ValidationError) as create_error:
+            services.cadastrar_indicador(
+                self.configurador,
+                {
+                    "normativa": normativa.id,
+                    "codigo": "2",
+                    "nome": "Novo indicador tardio",
+                },
+            )
+        self.assertIn("não pode ser alterada", str(create_error.exception))
+
+        indicador.refresh_from_db()
+        regra.refresh_from_db()
+        self.assertEqual(indicador.nome, "Indicador original")
+        self.assertEqual(str(regra.peso_portaria), "20.00")
+        self.assertEqual(str(regra.meta), "90.00")
+        self.assertEqual(len(consultar(entidade="indicador")), len(before))
 
     def test_peso_acima_de_100_e_recusado(self):
         normativa = self._normativa()
@@ -130,11 +191,11 @@ class CadastroTests(TestCase):
 
     def test_arquivo_de_exemplo_monta_regras_para_apuracao_e_coleta(self):
         normativa = self._normativa()
+        services.importar_indicadores(self.configurador, normativa.id, EXEMPLO.read_text(encoding="utf-8"))
         services.cadastrar_competencia(
             self.configurador,
             {"normativa": normativa.id, "ano": 2025, "mes": 2},
         )
-        services.importar_indicadores(self.configurador, normativa.id, EXEMPLO.read_text(encoding="utf-8"))
 
         regras = regras_para_apuracao(ano=2025, mes=2, cargo="coordenador_us", tipo_unidade="USF")
         self.assertEqual(soma_pesos_de_primeiro_nivel(regras), Decimal("100"))
@@ -162,6 +223,8 @@ class ApiTests(TestCase):
     def setUp(self):
         self.configurador = _pessoa("diana", "Configurador")
         self.tecnico = _pessoa("ana", "Técnico")
+        self.cam = _pessoa("cam_e3", "CAM/SECOGE")
+        self.avaliado = _pessoa("avaliado_e3", "Avaliado")
         self.cliente = APIClient()
 
     def _preparar_exemplo(self):
@@ -177,12 +240,6 @@ class ApiTests(TestCase):
             format="json",
         )
         self.assertEqual(normativa.status_code, 201, normativa.data)
-        competencia = self.cliente.post(
-            "/api/normativa/competencias/",
-            {"normativa": normativa.data["id"], "ano": 2025, "mes": 2},
-            format="json",
-        )
-        self.assertEqual(competencia.status_code, 201, competencia.data)
         arquivo = SimpleUploadedFile(
             "indicadores.csv",
             EXEMPLO.read_bytes(),
@@ -196,6 +253,12 @@ class ApiTests(TestCase):
         self.assertEqual(importacao.status_code, 201, importacao.data)
         self.assertEqual(importacao.data["quantidade"], 6)
         self.assertEqual(RegraCalculo.objects.count(), 6)
+        competencia = self.cliente.post(
+            "/api/normativa/competencias/",
+            {"normativa": normativa.data["id"], "ano": 2025, "mes": 2},
+            format="json",
+        )
+        self.assertEqual(competencia.status_code, 201, competencia.data)
         return normativa.data["id"]
 
     def test_tecnico_nao_cadastra_pela_api_mas_le_o_que_a_coleta_precisa(self):
@@ -230,6 +293,41 @@ class ApiTests(TestCase):
         resposta = self.cliente.get("/api/normativa/coleta/indicadores/", {"ano": 2025, "mes": 2})
 
         self.assertEqual(resposta.status_code, 403)
+
+    def test_cam_avaliado_e_tecnico_nao_cadastram_normativa(self):
+        normativa_id = self._preparar_exemplo()
+        quantidade_regras = RegraCalculo.objects.count()
+        indicador_id = Indicador.objects.filter(normativa_id=normativa_id).first().id
+
+        for usuario in (self.cam, self.avaliado, self.tecnico):
+            with self.subTest(usuario=usuario.username):
+                self.cliente.force_authenticate(user=usuario)
+                resposta = self.cliente.post(
+                    "/api/normativa/normativas/",
+                    {
+                        "codigo": f"NORM-{usuario.username}",
+                        "nome": "Tentativa rejeitada",
+                        "vigencia_inicio": "2026-01-01",
+                    },
+                    format="json",
+                )
+                self.assertEqual(resposta.status_code, 403)
+
+                resposta_regra = self.cliente.post(
+                    "/api/normativa/regras/",
+                    {
+                        "indicador": indicador_id,
+                        "cargo": "",
+                        "tipo_unidade": "",
+                        "peso_portaria": "10",
+                        "peso_excepcional": None,
+                        "meta": "90",
+                    },
+                    format="json",
+                )
+                self.assertEqual(resposta_regra.status_code, 403)
+
+        self.assertEqual(RegraCalculo.objects.count(), quantidade_regras)
 
     def test_competencia_desconhecida_responde_404(self):
         self.cliente.force_authenticate(user=self.tecnico)
@@ -346,6 +444,24 @@ class EdicaoIndicadorTests(TestCase):
         self.assertEqual(self.indicador.nivel, "indicador")
         self.assertEqual(self.filho.pai_id, self.indicador.id)
 
+    def test_cadastrar_sub_subindicador_com_subindicador_existente(self):
+        resposta = self.cliente.post(
+            "/api/normativa/indicadores/",
+            {
+                "normativa": self.normativa.id,
+                "codigo": "1.1.1",
+                "nome": "Sub-subindicador",
+                "nivel": "sub_subindicador",
+                "codigo_pai": self.filho.codigo,
+            },
+            format="json",
+        )
+
+        self.assertEqual(resposta.status_code, 201, resposta.data)
+        sub_sub = Indicador.objects.get(codigo="1.1.1")
+        self.assertEqual(sub_sub.pai_id, self.filho.id)
+        self.assertEqual(sub_sub.nivel, "sub_subindicador")
+
     def test_tecnico_nao_pode_editar_indicador(self):
         self.cliente.force_authenticate(user=self.tecnico)
 
@@ -381,15 +497,6 @@ class RegraCalculoTests(TestCase):
                 "nome": "Normativa de teste",
                 "vigencia_inicio": "2026-01-01",
                 "vigencia_fim": "2026-12-31",
-            },
-        )
-
-        services.cadastrar_competencia(
-            cls.configurador,
-            {
-                "normativa": cls.normativa.id,
-                "ano": 2026,
-                "mes": 12,
             },
         )
 
@@ -446,6 +553,12 @@ class RegraCalculoTests(TestCase):
         return resposta.data
 
     def _consultar(self, url, **filtros):
+        if url in (self.URL_APURACAO, self.URL_COLETA):
+            Competencia.objects.get_or_create(
+                ano=2026,
+                mes=12,
+                defaults={"normativa": self.normativa},
+            )
         resposta = self.cliente.get(
             url,
             {
@@ -727,6 +840,14 @@ class RegraCalculoTests(TestCase):
         self._salvar(
             indicador=self.subindicador.id,
             peso_portaria="50",
+        )
+        services.cadastrar_competencia(
+            self.configurador,
+            {
+                "normativa": self.normativa.id,
+                "ano": 2026,
+                "mes": 12,
+            },
         )
 
         regras = regras_para_apuracao(

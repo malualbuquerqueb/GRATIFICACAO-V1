@@ -24,6 +24,14 @@ class RegistroConsulta:
     novo_valor: str
 
 
+def _perfil_snapshot(usuario) -> str:
+    if usuario.is_superuser:
+        return "Superusuário"
+    return ", ".join(
+        usuario.groups.order_by("name").values_list("name", flat=True)
+    )
+
+
 def registrar(
     *,
     usuario,
@@ -67,6 +75,8 @@ def registrar(
     ):
         usuario_obj = usuario
         usuario_identificacao = usuario.get_username()
+        if not perfil:
+            perfil = _perfil_snapshot(usuario_obj)
 
     else:
         raise ValueError(

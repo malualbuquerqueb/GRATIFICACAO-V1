@@ -100,6 +100,13 @@ class Normativa(models.Model):
             raise ValidationError(
                 {"vigencia_fim": "O fim da vigência não pode ser anterior ao início."}
             )
+        if self.pk and Competencia.objects.filter(normativa_id=self.pk).exists():
+            raise ValidationError({
+                "normativa": (
+                    "Esta normativa já está vinculada a competência e "
+                    "não pode ser alterada."
+                )
+            })
 
     def cobre(self, ano, mes):
         """Diz se algum dia do mês informado cai dentro da vigência."""
@@ -190,7 +197,13 @@ class Indicador(models.Model):
         return f"{self.codigo} {self.nome}"
 
     def clean(self):
-
+        if Competencia.objects.filter(normativa_id=self.normativa_id).exists():
+            raise ValidationError({
+                "normativa": (
+                    "Indicadores desta normativa não podem ser alterados "
+                    "depois da vinculação a uma competência."
+                )
+            })
         if self.nivel not in NivelIndicador.values:
             raise ValidationError({"nivel": "Nível inválido."})
 
@@ -319,6 +332,17 @@ class RegraCalculo(models.Model):
     def __str__(self):
         destino = self.cargo or self.tipo_unidade or "geral"
         return f"{self.indicador.codigo} / {destino}"
+
+    def clean(self):
+        if Competencia.objects.filter(
+            normativa_id=self.indicador.normativa_id
+        ).exists():
+            raise ValidationError({
+                "indicador": (
+                    "Regras desta normativa não podem ser alteradas "
+                    "depois da vinculação a uma competência."
+                )
+            })
 
     @property
     def peso_vigente(self):

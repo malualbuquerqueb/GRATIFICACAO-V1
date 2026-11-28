@@ -3,7 +3,120 @@ from django.contrib.auth.models import Group
 from rest_framework import status
 from rest_framework.test import APITestCase
 from apps.auditoria.models import RegistroAuditoria
+from apps.auditoria.interface import registrar
+from apps.auditoria.views import RegistroAuditoriaSerializer
 from apps.cadastro.models import Avaliado, Distrito, Unidade
+
+
+class PerfilSnapshotTest(APITestCase):
+    def test_usuario_com_multiplos_papeis_tem_snapshot_deterministico(self):
+        usuario = get_user_model().objects.create_user(
+            username="perfil_multiplos",
+            password="senha_teste_123",
+        )
+        usuario.groups.add(
+            Group.objects.get(name="Técnico"),
+            Group.objects.get(name="Configurador"),
+        )
+
+        registro = registrar(
+            usuario=usuario,
+            componente="normativa",
+            operacao="cadastrar_normativa",
+            entidade="normativa",
+            identificador="CAM-TESTE",
+        )
+
+        self.assertEqual(registro.perfil, "Configurador, Técnico")
+
+    def test_superusuario_tem_identificacao_sem_grupo_de_negocio(self):
+        usuario = get_user_model().objects.create_superuser(
+            username="administrador_teste",
+            password="senha_teste_123",
+        )
+
+        registro = registrar(
+            usuario=usuario,
+            componente="normativa",
+            operacao="cadastrar_normativa",
+        )
+
+        self.assertEqual(registro.perfil, "Superusuário")
+
+    def test_alteracao_posterior_nao_reescreve_o_snapshot(self):
+        usuario = get_user_model().objects.create_user(
+            username="perfil_alterado",
+            password="senha_teste_123",
+        )
+        usuario.groups.add(Group.objects.get(name="Configurador"))
+
+        primeiro = registrar(
+            usuario=usuario,
+            componente="normativa",
+            operacao="cadastrar_normativa",
+        )
+
+        usuario.groups.add(Group.objects.get(name="Técnico"))
+
+        segundo = registrar(
+            usuario=usuario,
+            componente="normativa",
+            operacao="cadastrar_competencia",
+        )
+
+        primeiro.refresh_from_db()
+        segundo.refresh_from_db()
+        self.assertEqual(primeiro.perfil, "Configurador")
+        self.assertEqual(segundo.perfil, "Configurador, Técnico")
+
+
+class ApresentacaoAuditoriaSerializerTest(APITestCase):
+    def test_serializer_expoe_entidade_identificador_e_valores(self):
+        usuario = get_user_model().objects.create_user(
+            username="configurador_serializer",
+            password="senha_teste_123",
+        )
+        usuario.groups.add(Group.objects.get(name="Configurador"))
+        registro = registrar(
+            usuario=usuario,
+            componente="normativa",
+            operacao="atualizar_indicador",
+            entidade="indicador",
+            identificador="CAM-1.2/1",
+            valor_anterior='{"ativo": true, "meta": null}',
+            novo_valor='{"ativo": false, "meta": "90.00"}',
+        )
+
+        dados = RegistroAuditoriaSerializer(registro).data
+
+        self.assertEqual(dados["usuario"], "configurador_serializer")
+        self.assertEqual(dados["perfil"], "Configurador")
+        self.assertEqual(dados["componente"], "normativa")
+        self.assertEqual(dados["entidade"], "indicador")
+        self.assertEqual(dados["identificador"], "CAM-1.2/1")
+        self.assertEqual(dados["valorAnterior"], '{"ativo": true, "meta": null}')
+        self.assertEqual(dados["novoValor"], '{"ativo": false, "meta": "90.00"}')
+
+    def test_valores_ausentes_permitem_tratamento_no_frontend(self):
+        registro = RegistroAuditoria.objects.create(
+            componente="normativa",
+            usuario_identificacao="usuario_legado",
+            perfil="",
+            operacao="cadastrar_competencia",
+            entidade="competencia",
+            identificador="2026-12",
+            registro_afetado="competencia 2026-12",
+            valor_anterior="",
+            novo_valor='{"mes": 12, "ano": 2026}',
+            localizacao="",
+        )
+
+        dados = RegistroAuditoriaSerializer(registro).data
+
+        self.assertEqual(dados["perfil"], "")
+        self.assertEqual(dados["localizacao"], "")
+        self.assertEqual(dados["valorAnterior"], "")
+
 
 class AuditoriaPermissaoTest(APITestCase):
 

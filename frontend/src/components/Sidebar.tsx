@@ -28,15 +28,6 @@ export function Sidebar() {
       return false;
     }
 
-    // Mantém temporariamente as regras existentes
-    // nas rotas ainda não migradas para permissões.
-    if (
-      item.to === '/configuracao-indicadores' ||
-      item.to === '/auditoria'
-    ) {
-      return true;
-    }
-
     return !item.perfis || item.perfis.includes(perfilAtual);
   });
 

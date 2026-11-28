@@ -112,6 +112,9 @@ export interface AuditoriaEntrada {
   data: string;
   horario: string;
   operacao: string;
+  componente?: string;
+  entidade?: string;
+  identificador?: string;
   registroAfetado: string;
   valorAnterior: string;
   novoValor: string;

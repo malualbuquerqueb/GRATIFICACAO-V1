@@ -70,10 +70,15 @@ export function FormIndicador({
 
   const paisDisponiveis = indicadores.filter(
     (item) =>
-      item.normativa === dados.normativa &&
+      String(item.normativa) === String(dados.normativa) &&
       item.nivel === nivelPai &&
+      item.ativo &&
       item.id !== indicador?.id,
   );
+
+  const nomeNivelPai = nivelPai
+    ? NIVEIS[nivelPai]
+    : '';
 
   function atualizarCampo<K extends keyof DadosIndicador>(
     campo: K,
@@ -272,7 +277,7 @@ export function FormIndicador({
 
               {paisDisponiveis.length === 0 && (
                 <span className="field-hint">
-                  Cadastre primeiro um indicador do nível superior.
+                  Cadastre primeiro um indicador ativo do nível {nomeNivelPai}.
                 </span>
               )}
             </div>

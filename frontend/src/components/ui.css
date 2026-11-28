@@ -196,6 +196,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+.auditoria-valores {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  min-width: 220px;
+}
+
+.auditoria-valores div {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr);
+  gap: 8px;
+}
+
+.auditoria-valores dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.auditoria-valores dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.auditoria-vazio {
+  color: var(--color-text-muted);
+}
+
 /* Filtros */
 .filter-bar {
   display: flex;

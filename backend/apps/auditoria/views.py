@@ -15,6 +15,8 @@ class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     registroAfetado = serializers.CharField(source="registro_afetado")
     valorAnterior = serializers.CharField(source="valor_anterior")
     novoValor = serializers.CharField(source="novo_valor")
+    entidade = serializers.CharField(read_only=True)
+    identificador = serializers.CharField(read_only=True)
 
     class Meta:
         model = RegistroAuditoria
@@ -30,6 +32,8 @@ class RegistroAuditoriaSerializer(serializers.ModelSerializer):
             "perfil",
             "localizacao",
             "componente",
+            "entidade",
+            "identificador",
         ]
 
     def get_id(self, obj) -> str:
