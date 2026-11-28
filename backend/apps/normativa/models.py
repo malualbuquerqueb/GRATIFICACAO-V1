@@ -190,25 +190,72 @@ class Indicador(models.Model):
         return f"{self.codigo} {self.nome}"
 
     def clean(self):
+
+        if self.nivel not in NivelIndicador.values:
+            raise ValidationError({"nivel": "Nível inválido."})
+
+        if self.pk:
+            nivel_anterior = (
+                Indicador.objects
+                .filter(pk=self.pk)
+                .values_list("nivel", flat=True)
+                .first()
+            )
+
+            if (
+                nivel_anterior is not None
+                and nivel_anterior != self.nivel
+                and self.filhos.exists()
+            ):
+                raise ValidationError({
+                    "nivel": (
+                        "Não é possível alterar o nível de um "
+                        "indicador que possui filhos."
+                    )
+                })
+
         if self.nivel == NivelIndicador.INDICADOR:
             if self.pai_id:
-                raise ValidationError({"pai": "Indicador de primeiro nível não tem pai."})
+                raise ValidationError({
+                    "pai": "Indicador de primeiro nível não tem pai."
+                })
             return
+
         if not self.pai_id:
-            raise ValidationError({"pai": "Informe o indicador pai."})
+            raise ValidationError({
+                "pai": "Informe o indicador pai."
+            })
+
         pai = self.pai
+
         if pai.normativa_id != self.normativa_id:
-            raise ValidationError({"pai": "O pai precisa ser da mesma normativa."})
+            raise ValidationError({
+                "pai": "O pai precisa ser da mesma normativa."
+            })
+
         if self.pk and pai.pk == self.pk:
-            raise ValidationError({"pai": "O indicador não pode ser pai dele mesmo."})
+            raise ValidationError({
+                "pai": "O indicador não pode ser pai dele mesmo."
+            })
+
         esperado = NIVEL_DO_PAI[self.nivel]
+
         if pai.nivel != esperado:
-            raise ValidationError({"pai": f"O pai precisa ser do nível {esperado}."})
+            raise ValidationError({
+                "pai": f"O pai precisa ser do nível {esperado}."
+            })
+
         visto = set()
         atual = pai
+
         while atual is not None:
-            if atual.pk in visto or (self.pk and atual.pk == self.pk):
-                raise ValidationError({"pai": "A hierarquia do indicador não pode formar um ciclo."})
+            if atual.pk in visto or (
+                self.pk and atual.pk == self.pk
+            ):
+                raise ValidationError({
+                    "pai": "A hierarquia do indicador não pode formar um ciclo."
+                })
+
             visto.add(atual.pk)
             atual = atual.pai
 

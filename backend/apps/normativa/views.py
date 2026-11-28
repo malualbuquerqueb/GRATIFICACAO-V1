@@ -26,12 +26,17 @@ from .serializers import (
 from .services import PERMISSAO_INDICADOR, PERMISSAO_REGRA
 
 
-def _erro(exc):
-    if hasattr(exc, "error_dict"):
-        detalhe = {campo: [str(item) for item in erros] for campo, erros in exc.error_dict.items()}
-    else:
-        detalhe = {"erros": [str(item) for item in exc.error_list]}
-    return Response(detalhe, status=status.HTTP_400_BAD_REQUEST)
+def _erro(exc: ValidationError) -> Response:
+    detalhe = (
+        exc.message_dict
+        if hasattr(exc, "error_dict")
+        else {"erros": exc.messages}
+    )
+
+    return Response(
+        detalhe,
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 class Normativas(APIView):

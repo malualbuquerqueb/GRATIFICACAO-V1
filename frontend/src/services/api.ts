@@ -8,6 +8,11 @@ import type {
   CompetenciaNormativa,
   IndicadorNormativa,
   RegraCalculo,
+  DadosRegraCalculo,
+  DadosNormativa,
+  DadosCompetencia,
+  DadosIndicador,
+  DadosAtualizacaoIndicador,
 } from '../types/normativa';
 
 const BASE = '/api';
@@ -218,6 +223,28 @@ export const api = {
   listarNormativas: () =>
     requisicao<Normativa[]>('/normativa/normativas/'),
 
+
+  cadastrarNormativa(dados: DadosNormativa) {
+    return requisicao<Normativa>(
+      '/normativa/normativas/',
+      {
+        method: 'POST',
+        body: JSON.stringify(dados),
+      },
+    );
+  },
+
+  cadastrarCompetencia(dados: DadosCompetencia) {
+    return requisicao<CompetenciaNormativa>(
+      '/normativa/competencias/',
+      {
+        method: 'POST',
+        body: JSON.stringify(dados),
+      },
+    );
+  },
+
+
   listarCompetenciasNormativa: () =>
     requisicao<CompetenciaNormativa[]>(
       '/normativa/competencias/'
@@ -231,6 +258,29 @@ export const api = {
         : '')
     ),
 
+  cadastrarIndicador(dados: DadosIndicador) {
+  return requisicao<IndicadorNormativa>(
+    '/normativa/indicadores/',
+    {
+      method: 'POST',
+      body: json(dados),
+    },
+  );
+},
+
+  atualizarIndicador(
+    id: number,
+    dados: DadosAtualizacaoIndicador,
+  ) {
+    return requisicao<IndicadorNormativa>(
+      `/normativa/indicadores/${id}/`,
+      {
+        method: 'PUT',
+        body: json(dados),
+      },
+    );
+  },
+
   listarRegrasCalculo: (indicadorId?: number) =>
     requisicao<RegraCalculo[]>(
       '/normativa/regras/' +
@@ -238,4 +288,14 @@ export const api = {
         ? `?indicador=${indicadorId}`
         : '')
     ),
+
+  configurarRegraCalculo(dados: DadosRegraCalculo) {
+    return requisicao<RegraCalculo>(
+      '/normativa/regras/',
+      {
+        method: 'POST',
+        body: json(dados),
+      },
+    );
+  },
 };

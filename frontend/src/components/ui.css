@@ -486,3 +486,61 @@
   min-width: 200px;
   max-width: 100%;
 }
+
+/* Formulário de cadastro de normativa */
+
+.form-normativa {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.form-normativa h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.form-normativa > .field-hint {
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.form-normativa fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.form-normativa-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.form-normativa-erro {
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .form-normativa .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-normativa .form-field.span-2 {
+    grid-column: span 1;
+  }
+}
